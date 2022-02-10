@@ -1,0 +1,318 @@
+<html>
+
+<head>
+	<title>GamepadJS</title>
+	<meta charset="UTF-8">
+	<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgo=">
+</head>
+
+<body>
+
+<div id="controller-data">----</div>
+
+<script>
+
+
+/**
+ * Create a Gamepad object.
+ * 
+ * Note: Different browsers implement the Gamepad API differently.
+ * This class assumes the Gamepad object contains fields: 
+ *   axes[], buttons[], id, and index.
+ */
+class Gamepad 
+{
+	constructor(gamepadData)
+	{
+		this.index = gamepadData.index;
+		let id = gamepadData.id;
+
+		// determine gamepad name
+
+		// remove parenthesis data, if it exists (often on Chrome)
+		if ( id.indexOf("(") > -1 && id.indexOf(")") > -1 )
+		{
+			let startIndex = id.indexOf("(");
+			let endIndex   = id.indexOf(")");
+			id = id.slice(0, startIndex) + id.slice(endIndex+1);
+		}
+		// remove data before second hyphen, if it exists (often on Firefox)
+		else if ( id.split("-").length > 2 )
+		{
+			let firstIndex = id.indexOf("-");
+			let secondIndex = id.indexOf("-", firstIndex+1);
+			id = id.slice(secondIndex+1);
+		}
+		// remove whitespace
+		id = id.trim();
+		this.name = id;
+
+
+		this.axes = gamepadData.axes;
+		this.buttons = gamepadData.buttons;
+
+		this.buttonNames = [
+		  "A", "B", "X", "Y", 
+		  "LB", "RB", "LT", "RT", 
+		  "Select", "Start", 
+		  "Up", "Down", "Left", "Right" 
+		];
+
+		this.buttonMapping = {};
+
+		for (let i = 0; i < this.buttonNames.length; i++)
+		{
+			let buttonName = this.buttonNames[i];
+			this.buttonMapping[buttonName] = null;
+		}
+
+		this.buttonFullNames = [
+			"A button", "B button", "X button", "Y button",
+			"Left shoulder button", "Right shoulder button",
+			"Left trigger", "Right trigger",
+			"Back/Select button", "Start button",
+			"directional pad - Up", "directional pad - Down", 
+			"directional pad - Left", "directional pad - Right"
+		];
+
+		this.axisNames = [
+		  "Axis1X", "Axis1Y",
+		  "Axis2X", "Axis2Y"
+		];
+
+		this.axisFullNames = [
+		  "Joystick 1 Right", "Joystick 1 Up",
+		  "Joystick 2 Right", "Joystick 2 Up"
+		];
+
+		this.tick = 0;
+
+		console.log(this);
+	}
+
+	
+
+	update()
+	{
+		// Firefox links axes/button array references, but Chrome does not, 
+		//   therefore the gamepad object must be re-polled
+		this.axes = navigator.getGamepads()[this.index].axes;
+		this.buttons = navigator.getGamepads()[this.index].buttons;
+
+
+	}
+
+	setupMapping()
+	{
+		console.log("Press the keys in the following order:");
+
+	}
+
+	// use to signal gamepad mapping start
+	buttonDownCount()
+	{
+		let buttonsDown = 0;
+		for (let i = 0; i < this.buttons.length; i++)
+			if ( this.buttons[i].pressed )
+		    	buttonsDown++; 
+		return buttonsDown;
+	}
+
+
+}
+
+let gamepads = {};
+
+let div = document.getElementById("controller-data");
+
+
+let onGamepadConnected = function(gamepadEventData)
+{
+    let gamepadData = gamepadEventData.gamepad;
+    let index = gamepadData.index;
+    gamepads[index] = new Gamepad(gamepadData);
+
+}
+
+window.addEventListener( "gamepadconnected", onGamepadConnected );
+
+function displayGamepadData()
+{
+	let gamepad = gamepads[0];
+
+
+	if ( !gamepad )
+	{
+		div.innerHTML = "Press a button on your gamepad to start."
+		return;
+	}
+
+	div.innerHTML = "";
+
+	gamepad.tick++;
+
+	div.innerHTML += "Tick: " + gamepad.tick + "<br/>";
+	div.innerHTML += "Name: " + gamepad.name + "<br/>";
+
+	gamepad.update();
+
+
+	for (let i = 0; i < gamepad.axes.length; i++)
+		div.innerHTML += "Axis " + i + ": " + gamepad.axes[i] + "<br/>";
+
+	for (let i = 0; i < gamepad.buttons.length; i++)
+		div.innerHTML += "Button " + i + ": " + gamepad.buttons[i].pressed + "," + gamepad.buttons[i].touched + "<br/>";
+
+	// if >5 then start mapping.
+	if ( gamepad.buttonDownCount() == 5 )
+	{
+		gamepad.setupMapping();
+	}
+
+}
+
+function loop()
+{
+	displayGamepadData();
+	requestAnimationFrame(loop);
+}
+
+loop();
+
+
+
+
+/*
+var haveEvents = 'ongamepadconnected' in window;
+var controllers = {};
+
+function connecthandler(e) {
+  addgamepad(e.gamepad);
+}
+
+function addgamepad(gamepad) {
+  controllers[gamepad.index] = gamepad;
+
+  var d = document.createElement("div");
+  d.setAttribute("id", "controller" + gamepad.index);
+
+  var t = document.createElement("h1");
+  t.appendChild(document.createTextNode("gamepad: " + gamepad.id));
+  d.appendChild(t);
+
+  var b = document.createElement("div");
+  b.className = "buttons";
+  for (var i = 0; i < gamepad.buttons.length; i++) {
+    var e = document.createElement("span");
+    e.className = "button";
+    //e.id = "b" + i;
+    e.innerHTML = i;
+    b.appendChild(e);
+  }
+
+  d.appendChild(b);
+
+  var a = document.createElement("div");
+  a.className = "axes";
+
+  for (var i = 0; i < gamepad.axes.length; i++) {
+    var p = document.createElement("progress");
+    p.className = "axis";
+    //p.id = "a" + i;
+    p.setAttribute("max", "2");
+    p.setAttribute("value", "1");
+    p.innerHTML = i;
+    a.appendChild(p);
+  }
+
+  d.appendChild(a);
+
+  // See https://github.com/luser/gamepadtest/blob/master/index.html
+  var start = document.getElementById("start");
+  if (start) {
+    start.style.display = "none";
+  }
+
+  document.body.appendChild(d);
+  requestAnimationFrame(updateStatus);
+}
+
+function disconnecthandler(e) {
+  removegamepad(e.gamepad);
+}
+
+function removegamepad(gamepad) {
+  var d = document.getElementById("controller" + gamepad.index);
+  document.body.removeChild(d);
+  delete controllers[gamepad.index];
+}
+
+function updateStatus() {
+  if (!haveEvents) {
+    scangamepads();
+  }
+
+  var i = 0;
+  var j;
+
+  for (j in controllers) {
+    var controller = controllers[j];
+    var d = document.getElementById("controller" + j);
+    var buttons = d.getElementsByClassName("button");
+
+    for (i = 0; i < controller.buttons.length; i++) {
+      var b = buttons[i];
+      var val = controller.buttons[i];
+      var pressed = val == 1.0;
+      if (typeof(val) == "object") {
+        pressed = val.pressed;
+        val = val.value;
+      }
+
+      var pct = Math.round(val * 100) + "%";
+      b.style.backgroundSize = pct + " " + pct;
+
+      if (pressed) {
+        b.className = "button pressed";
+      } else {
+        b.className = "button";
+      }
+    }
+
+    var axes = d.getElementsByClassName("axis");
+    for (i = 0; i < controller.axes.length; i++) {
+      var a = axes[i];
+      a.innerHTML = i + ": " + controller.axes[i].toFixed(4);
+      a.setAttribute("value", controller.axes[i] + 1);
+    }
+  }
+
+  requestAnimationFrame(updateStatus);
+}
+
+function scangamepads() {
+  var gamepads = navigator.getGamepads ? navigator.getGamepads() : (navigator.webkitGetGamepads ? navigator.webkitGetGamepads() : []);
+  for (var i = 0; i < gamepads.length; i++) {
+    if (gamepads[i]) {
+      if (gamepads[i].index in controllers) {
+        controllers[gamepads[i].index] = gamepads[i];
+      } else {
+        addgamepad(gamepads[i]);
+      }
+    }
+  }
+}
+
+window.addEventListener("gamepadconnected", connecthandler);
+window.addEventListener("gamepaddisconnected", disconnecthandler);
+
+if (!haveEvents) {
+ setInterval(scangamepads, 500);
+}
+*/
+
+</script>
+
+</body>
+
+</html>
