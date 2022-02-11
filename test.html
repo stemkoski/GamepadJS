@@ -8,10 +8,17 @@
 
 <body>
 
-<div id="controller-data">----</div>
+<hr>
+<div id="gamepad-text" style="border: 4px solid green">
+Gamepad mapping instructions appear here.
+</div>
+<hr>
+<div id="gamepad-debug" style="border: 4px solid blue">
+Press a button on your gamepad to start.
+</div>
+<hr>
 
 <script>
-
 
 /**
  * Create a Gamepad object.
@@ -25,9 +32,9 @@ class Gamepad
 	constructor(gamepadData)
 	{
 		this.index = gamepadData.index;
-		let id = gamepadData.id;
 
 		// determine gamepad name
+		let id = gamepadData.id;
 
 		// remove parenthesis data, if it exists (often on Chrome)
 		if ( id.indexOf("(") > -1 && id.indexOf(")") > -1 )
@@ -47,24 +54,21 @@ class Gamepad
 		id = id.trim();
 		this.name = id;
 
+		// store raw data from browser gamepad object
+		this.gamepadButtons = gamepadData.buttons;
+		this.gamepadAxes    = gamepadData.axes;
 
-		this.axes = gamepadData.axes;
-		this.buttons = gamepadData.buttons;
+		// store names that correspond to each gamepad button/axis index value;
+		//   determined during the mapping process
+		this.buttonIndexNameMap = new Array(this.gamepadButtons.length);
+		this.axisIndexNameMap   = new Array(this.gamepadAxes.length);
 
-		this.buttonNames = [
-		  "A", "B", "X", "Y", 
-		  "LB", "RB", "LT", "RT", 
-		  "Select", "Start", 
-		  "Up", "Down", "Left", "Right" 
+		// names of the buttons/axes that will be mapped
+
+		this.buttonShortNames = [
+		  "A", "B", "X", "Y", "LB", "RB", "LT", "RT", 
+		  "Select", "Start", "Up", "Down", "Left", "Right" 
 		];
-
-		this.buttonMapping = {};
-
-		for (let i = 0; i < this.buttonNames.length; i++)
-		{
-			let buttonName = this.buttonNames[i];
-			this.buttonMapping[buttonName] = null;
-		}
 
 		this.buttonFullNames = [
 			"A button", "B button", "X button", "Y button",
@@ -75,7 +79,7 @@ class Gamepad
 			"Directional Pad - Left", "Directional Pad - Right"
 		];
 
-		this.axisNames = [
+		this.axisShortNames = [
 		  "Axis1X", "Axis1Y",
 		  "Axis2X", "Axis2Y"
 		];
@@ -85,234 +89,280 @@ class Gamepad
 		  "Joystick 2 Right", "Joystick 2 Up"
 		];
 
+		this.mappingInProgress = false;
+
 		this.tick = 0;
+
+		this.buttonPressedSet  = new Set();
+		this.buttonPressingSet = new Set();
+		this.buttonReleasedSet = new Set();
+
+		this.deadZone = 0.10;
+
+		// used for text output
+		this.textDivId = "gamepad-text";
+		this.debugDivId = "gamepad-debug";
 
 		console.log(this);
 	}
 
-	
+	// print text into corresponding div
+	printText(text)
+	{
+		let div = document.getElementById(this.textDivId);
+		div.innerHTML = text;
+	}
+
+	// print raw gamepad data
+	printDebug()
+	{
+	  let div = document.getElementById(this.debugDivId);
+		div.innerHTML = "";
+		div.innerHTML += "Name: " + this.name + "<br/>";
+		div.innerHTML += "Tick: " + this.tick + "<br/>";
+
+		for (let i = 0; i < this.gamepadAxes.length; i++)
+			div.innerHTML += "Axis " + i + 
+		    " (" + this.axisIndexNameMap[i] + "): " + 
+				this.gamepadAxes[i] + "<br/>";
+
+		for (let i = 0; i < this.gamepadButtons.length; i++)
+			div.innerHTML += "Button " + i + 
+		    " (" + this.buttonIndexNameMap[i] + "): " + 
+				this.gamepadButtons[i].pressed + "<br/>";
+	}
+
+	debugPrint()
+	{
+		// debug printing
+		if (this.buttonPressedSet.size > 0)
+			console.log("Buttons pressed: ", this.buttonPressedSet );
+		if (this.buttonPressingSet.size > 0)
+			console.log("Buttons pressing: ", this.buttonPressingSet );
+		if (this.buttonReleasedSet.size > 0)
+			console.log("Buttons released: ", this.buttonReleasedSet );
+	}	
 
 	update()
 	{
+		this.tick++;
+
 		// Firefox links axes/button array references, but Chrome does not, 
 		//   therefore the gamepad object must be re-polled
-		this.axes = navigator.getGamepads()[this.index].axes;
-		this.buttons = navigator.getGamepads()[this.index].buttons;
+		this.gamepadAxes = navigator.getGamepads()[this.index].axes;
+		this.gamepadButtons = navigator.getGamepads()[this.index].buttons;
+
+		// clear previous discrete event status
+		this.buttonPressedSet.clear();
+		this.buttonReleasedSet.clear();
+
+		for (let i = 0; i < this.gamepadButtons.length; i++)
+		{
+			// which buttons were just pressed since last update?
+			if ( this.gamepadButtons[i].pressed && !this.buttonPressingSet.has(i) )
+			{
+				this.buttonPressedSet.add(i);
+				this.buttonPressingSet.add(i);
+			}
+
+			// which buttons were just pressed since last update?
+			if ( !this.gamepadButtons[i].pressed && this.buttonPressingSet.has(i) )
+			{
+				this.buttonPressingSet.delete(i);
+				this.buttonReleasedSet.add(i);
+			}
+		}
 
 
-	}
+		// initialize button/axis mapping
+		if ( this.buttonPressingSet.size == 5 && !this.mappingInProgress )
+		{
+			 // reset button and axis index mapping
+			 this.buttonIndexNameMap = new Array(this.gamepadButtons.length);
+		   this.axisIndexNameMap   = new Array(this.gamepadAxes.length);
+			 this.buttonNameIndex = -1;
+			 this.axisNameIndex = -1;
+			 this.mappingInProgress = true;
+		}
 
-	setupMapping()
+		// TODO: move into function
+		if (this.mappingInProgress)
+		{
+			if (this.buttonNameIndex == -1)
+			{
+				this.printText("Release all buttons to continue.");
+				if (this.buttonPressingSet.size == 0)
+					this.buttonNameIndex = 0;
+			}
+			else if (this.buttonNameIndex < this.buttonShortNames.length)
+			{
+				let shortName = this.buttonShortNames[this.buttonNameIndex];
+				let  fullName = this.buttonFullNames[this.buttonNameIndex];
+
+				// update message				
+				let text = "press the " + fullName;
+				if (this.buttonNameIndex > 0)
+				{
+					text += " (or press [" + this.buttonShortNames[0] + "] to skip) ";
+				}
+				this.printText(text);
+
+				// if a button has just been pressed
+				if (this.buttonPressedSet.size == 1)
+				{
+					// getting the first element of a set is tricky; requies iterator
+					let pressedIndex = this.buttonPressedSet.values().next().value;
+
+					// first button becomes the skip button
+					if (this.buttonNameIndex == 0)
+					{
+						this.firstButtonName  = shortName;
+						this.firstButtonIndex = pressedIndex;
+					}
+					else 
+					{
+						// every other button can be skipped by pressing the first button again
+						if ( pressedIndex == this.firstButtonIndex )
+					  	pressedIndex = null;
+					}
+
+					if (pressedIndex != null)
+						this.buttonIndexNameMap[pressedIndex] = shortName;
+					
+					this.buttonNameIndex++;
+			  }
+			}
+			else if (this.axisNameIndex == -1)
+			{
+			  	this.printText("button mapping complete!");
+			  	this.mappingInProgress = false;
+			}
+    }
+			 	/*
+			  else
+				{
+					 console.log("Button mapping complete.");
+					 console.log( this.buttonMapping );
+
+					 this.buttonMappingInProgress = false;
+					 this.axisMappingInProgress = true;
+
+					 let axisFullName = this.axisFullNames[0];
+		  		 console.log("Press the " + axisFullName + 
+		  			" (or press the " + this.firstButtonName + " to skip).");
+				}
+			}
+		}
+		else if (this.axisMappingInProgress)
+		{
+			let pressedIndex = null;
+			// get index of pressed axis
+			for (let i = 0; i < this.gamepadAxes.length; i++)
+			{
+				 if ( Math.abs(this.gamepadAxes[i]) > 0.95 )
+				 	 pressedIndex = i;
+			}
+
+			// if the "A button" is pressed, set pressed index to null and
+			//   skip to the next axisIndex...
+
+			if (pressedIndex != null)
+			{
+				let shortName = this.axisShortNames[this.axisIndex];
+				this.axisMapping[shortName] = pressedIndex;
+				this.axisIndex++;
+			}
+
+			if (this.axisIndex < this.axisShortNames.length)
+			{
+  			let axisFullName = this.axisFullNames[this.axisIndex];
+  			
+  			// need to release all axes first!
+
+		  	console.log("Press the " + axisFullName + 
+		  		" (or press the " + this.firstButtonName + " to skip).");
+			}
+			else
+			{
+				 console.log("Axis mapping complete.");
+				 console.log( this.axisMapping );
+
+    		this.axisMappingInProgress = false;	
+			}
+
+			*/
+		
+
+
+	} // end of update
+
+  // note: if buttonName does not exist, or is not mapped, buttonIndex is null
+  //  and return value is false
+	isButtonPressed(buttonName)
 	{
-		console.log("Press the keys in the following order:");
+		let buttonIndex = this.buttonMapping[buttonName];
 
+		if ( !buttonIndex )
+			return false;
+		else
+		  return this.buttonPressedSet.has(buttonIndex);
 	}
 
-	// use to signal gamepad mapping start
-	buttonDownCount()
+	isButtonPressing(buttonName)
 	{
-		let buttonsDown = 0;
-		for (let i = 0; i < this.buttons.length; i++)
-			if ( this.buttons[i].pressed )
-		    	buttonsDown++; 
-		return buttonsDown;
+		let buttonIndex = this.buttonMapping[buttonName];
+		return this.buttonPressedSet.has(buttonIndex);
 	}
 
+	isButtonReleased(buttonName)
+	{
+		let buttonIndex = this.buttonMapping[buttonName];
+		return this.buttonPressedSet.has(buttonIndex);
+	}
+
+  // note: if buttonName does not exist, or is not mapped, axisIndex is null
+  //  and should return a value of 0
+  getAxisValue(axisName)
+  {
+  	let axisIndex = this.axisMapping[axisName];
+  	
+  	if ( !axisIndex )
+  		return 0;
+
+  	let axisValue = this.gamepadAxes[axisIndex];
+  	// TODO: deadZone smoothing
+  	return axisValue;
+  }	
 
 }
 
-let gamepads = {};
+// ==================================
 
-let div = document.getElementById("controller-data");
-
+let gamepadList = [];
 
 let onGamepadConnected = function(gamepadEventData)
 {
     let gamepadData = gamepadEventData.gamepad;
-    let index = gamepadData.index;
-    gamepads[index] = new Gamepad(gamepadData);
-
+    let gamepad = new Gamepad(gamepadData);
+    gamepadList.push( gamepad );
 }
 
 window.addEventListener( "gamepadconnected", onGamepadConnected );
 
-function displayGamepadData()
-{
-	let gamepad = gamepads[0];
-
-
-	if ( !gamepad )
-	{
-		div.innerHTML = "Press a button on your gamepad to start."
-		return;
-	}
-
-	div.innerHTML = "";
-
-	gamepad.tick++;
-
-	div.innerHTML += "Tick: " + gamepad.tick + "<br/>";
-	div.innerHTML += "Name: " + gamepad.name + "<br/>";
-
-	gamepad.update();
-
-
-	for (let i = 0; i < gamepad.axes.length; i++)
-		div.innerHTML += "Axis " + i + ": " + gamepad.axes[i] + "<br/>";
-
-	for (let i = 0; i < gamepad.buttons.length; i++)
-		div.innerHTML += "Button " + i + ": " + gamepad.buttons[i].pressed + "," + gamepad.buttons[i].touched + "<br/>";
-
-	// if >5 then start mapping.
-	if ( gamepad.buttonDownCount() == 5 )
-	{
-		gamepad.setupMapping();
-	}
-
-}
-
 function loop()
 {
-	displayGamepadData();
+	for (let i = 0; i < gamepadList.length; i++)
+	{
+		let gamepad = gamepadList[i];
+		gamepad.update();
+		gamepad.printDebug();
+	}
+
 	requestAnimationFrame(loop);
 }
 
 loop();
 
-
-
-
-/*
-var haveEvents = 'ongamepadconnected' in window;
-var controllers = {};
-
-function connecthandler(e) {
-  addgamepad(e.gamepad);
-}
-
-function addgamepad(gamepad) {
-  controllers[gamepad.index] = gamepad;
-
-  var d = document.createElement("div");
-  d.setAttribute("id", "controller" + gamepad.index);
-
-  var t = document.createElement("h1");
-  t.appendChild(document.createTextNode("gamepad: " + gamepad.id));
-  d.appendChild(t);
-
-  var b = document.createElement("div");
-  b.className = "buttons";
-  for (var i = 0; i < gamepad.buttons.length; i++) {
-    var e = document.createElement("span");
-    e.className = "button";
-    //e.id = "b" + i;
-    e.innerHTML = i;
-    b.appendChild(e);
-  }
-
-  d.appendChild(b);
-
-  var a = document.createElement("div");
-  a.className = "axes";
-
-  for (var i = 0; i < gamepad.axes.length; i++) {
-    var p = document.createElement("progress");
-    p.className = "axis";
-    //p.id = "a" + i;
-    p.setAttribute("max", "2");
-    p.setAttribute("value", "1");
-    p.innerHTML = i;
-    a.appendChild(p);
-  }
-
-  d.appendChild(a);
-
-  // See https://github.com/luser/gamepadtest/blob/master/index.html
-  var start = document.getElementById("start");
-  if (start) {
-    start.style.display = "none";
-  }
-
-  document.body.appendChild(d);
-  requestAnimationFrame(updateStatus);
-}
-
-function disconnecthandler(e) {
-  removegamepad(e.gamepad);
-}
-
-function removegamepad(gamepad) {
-  var d = document.getElementById("controller" + gamepad.index);
-  document.body.removeChild(d);
-  delete controllers[gamepad.index];
-}
-
-function updateStatus() {
-  if (!haveEvents) {
-    scangamepads();
-  }
-
-  var i = 0;
-  var j;
-
-  for (j in controllers) {
-    var controller = controllers[j];
-    var d = document.getElementById("controller" + j);
-    var buttons = d.getElementsByClassName("button");
-
-    for (i = 0; i < controller.buttons.length; i++) {
-      var b = buttons[i];
-      var val = controller.buttons[i];
-      var pressed = val == 1.0;
-      if (typeof(val) == "object") {
-        pressed = val.pressed;
-        val = val.value;
-      }
-
-      var pct = Math.round(val * 100) + "%";
-      b.style.backgroundSize = pct + " " + pct;
-
-      if (pressed) {
-        b.className = "button pressed";
-      } else {
-        b.className = "button";
-      }
-    }
-
-    var axes = d.getElementsByClassName("axis");
-    for (i = 0; i < controller.axes.length; i++) {
-      var a = axes[i];
-      a.innerHTML = i + ": " + controller.axes[i].toFixed(4);
-      a.setAttribute("value", controller.axes[i] + 1);
-    }
-  }
-
-  requestAnimationFrame(updateStatus);
-}
-
-function scangamepads() {
-  var gamepads = navigator.getGamepads ? navigator.getGamepads() : (navigator.webkitGetGamepads ? navigator.webkitGetGamepads() : []);
-  for (var i = 0; i < gamepads.length; i++) {
-    if (gamepads[i]) {
-      if (gamepads[i].index in controllers) {
-        controllers[gamepads[i].index] = gamepads[i];
-      } else {
-        addgamepad(gamepads[i]);
-      }
-    }
-  }
-}
-
-window.addEventListener("gamepadconnected", connecthandler);
-window.addEventListener("gamepaddisconnected", disconnecthandler);
-
-if (!haveEvents) {
- setInterval(scangamepads, 500);
-}
-*/
-
 </script>
-
 </body>
-
 </html>
