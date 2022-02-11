@@ -96,6 +96,7 @@ class Gamepad
 		this.buttonPressedSet  = new Set();
 		this.buttonPressingSet = new Set();
 		this.buttonReleasedSet = new Set();
+		this.axisPushedSet     = new Set();
 
 		this.deadZone = 0.10;
 
@@ -158,14 +159,14 @@ class Gamepad
 
 		for (let i = 0; i < this.gamepadButtons.length; i++)
 		{
-			// which buttons were just pressed since last update?
+			// which buttons were just pressed on gamepad since last update?
 			if ( this.gamepadButtons[i].pressed && !this.buttonPressingSet.has(i) )
 			{
 				this.buttonPressedSet.add(i);
 				this.buttonPressingSet.add(i);
 			}
 
-			// which buttons were just pressed since last update?
+			// which buttons are no longer being pressed on gamepad since last update?
 			if ( !this.gamepadButtons[i].pressed && this.buttonPressingSet.has(i) )
 			{
 				this.buttonPressingSet.delete(i);
@@ -173,16 +174,23 @@ class Gamepad
 			}
 		}
 
+		for (let i = 0; i < this.gamepadAxes.length; i++)
+		{
+			
+		}
 
 		// initialize button/axis mapping
 		if ( this.buttonPressingSet.size == 5 && !this.mappingInProgress )
 		{
 			 // reset button and axis index mapping
 			 this.buttonIndexNameMap = new Array(this.gamepadButtons.length);
-		   this.axisIndexNameMap   = new Array(this.gamepadAxes.length);
+		     this.axisIndexNameMap   = new Array(this.gamepadAxes.length);
 			 this.buttonNameIndex = -1;
 			 this.axisNameIndex = -1;
 			 this.mappingInProgress = true;
+
+			 this.buttonCheckReady = false;
+			 this.axisCheckReady = false;
 		}
 
 		// TODO: move into function
@@ -232,12 +240,25 @@ class Gamepad
 					this.buttonNameIndex++;
 			  }
 			}
-			else if (this.axisNameIndex == -1)
+			else if (this.axisNameIndex < this.axisShortNames.length)
 			{
-			  	this.printText("button mapping complete!");
+				if ( !this.axisCheckReady )
+				{
+
+				}
+
+				if ( this.axisPushedSet.size == 0 )
+				{
+
+				}	
+			  	
+			}
+			else
+			{
+				this.printText("gamepad mapping complete!");
 			  	this.mappingInProgress = false;
 			}
-    }
+    	}
 			 	/*
 			  else
 				{
